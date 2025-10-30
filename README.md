@@ -2,7 +2,7 @@
 
 Дубіна Станіслав
 
-Правила оформлення програмного коду на JavaScript згідно JavaScript Style Guides
+Правила оформлення програмного коду на JavaScript згідно Google JavaScript Style Guides
 
 Методи рефакторингу коду програмного забезпечення
 
