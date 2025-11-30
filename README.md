@@ -4,6 +4,8 @@
 
 Правила оформлення програмного коду на JavaScript згідно Google JavaScript Style Guides
 
-Методи рефакторингу коду програмного забезпечення
+Методи рефакторинґу коду програмного забезпечення: Convert
+Procedural Design to Objects, Replace Data Value with Object, Replace Method with
+Method Object
 
 Програмна система для автоматичного годування тварин
