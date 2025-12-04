@@ -1,0 +1,470 @@
+﻿МІНІСТЕРСТВО ОСВІТИ І НАУКИ УКРАЇНИ
+ХАРКІВСЬКИЙ НАЦІОНАЛЬНИЙ УНІВЕРСИТЕТ РАДІОЕЛЕКТРОНІКИ
+
+
+ФАКУЛЬТЕТ КОМП’ЮТЕРНИХ НАУК
+КАТЕДРА ПРОГРАМНОЇ ІНЖЕНЕРІЇ
+
+
+
+
+
+
+
+
+ЗВІТ
+до лабораторної роботи №3 з дисципліни
+«Аналіз та рефакторинґ коду»
+на тему: «РОЗРОБКА БІЗНЕС-ЛОГІКИ ТА
+ФУНКЦІЙ АДМІНІСТРУВАННЯ СЕРВЕРНОЇ ЧАСТИНИ ПРОГРАМНОЇ
+СИСТЕМИ»
+
+
+
+
+
+
+
+
+Виконав:                                                                                                  Перевірив:
+ст. гр. ПЗПІ-23-6                                                                      ас. катедри ПІ
+Дубіна Станіслав Геннадійович                        Дашенков Дмитро Сергійович
+
+
+
+
+Харків 2025
+
+
+
+
+1 ЗАВДАННЯ
+
+
+Метою роботи є реалізація розширеної серверної логіки та інструментів адміністрування. Завдання передбачає вихід за межі базових операцій маніпулювання даними (CRUD) шляхом створення спеціалізованих алгоритмів, необхідних для поглибленої обробки інформації та менеджменту системних ресурсів.
+
+
+________________
+
+
+2 ОПИС ВИКОНАНОЇ РОБОТИ
+2.1. Опис інженерних рішень та архітектури системи
+  Серверна частина програмної системи FeedlyPet реалізована на базі фреймворку NestJS з використанням модульної архітектури та принципів чистого коду. Основою бізнес-логіки є інтеграція REST API для клієнтських застосунків та MQTT-протоколу для двостороннього зв'язку з IoT-пристроями. Архітектура побудована за принципом розділення відповідальності, де кожен модуль (Auth, Devices, Pets, Schedules, Notifications, MQTT) інкапсулює власну бізнес-логіку та взаємодіє з іншими через чітко визначені інтерфейси. Для забезпечення надійності комунікації з пристроями впроваджено систему heartbeat-моніторингу та механізм Last Will and Testament, що дозволяє відстежувати статус підключення годівниць у реальному часі.
+  Ключовим інженерним рішенням є реалізація автоматизованої системи годування на базі cron-планувальника, який аналізує активні розклади користувачів та ініціює команди годування через MQTT-брокер у призначений час. Бізнес-логіка обробки подій годування включає валідацію розмірів порцій, перевірку доступності пристроїв, автоматичне оновлення рівня корму та генерацію відповідних сповіщень. Система статистики агрегує дані про історію годувань, забезпечуючи аналітику споживання корму з групуванням за різними часовими періодами та розрахунком прогнозної дати закінчення запасів.
+Функції адміністрування реалізовані через багаторівневу систему автентифікації та авторизації з використанням JWT-токенів та механізму refresh-токенів для продовження сесій. Для IoT-пристроїв застосовано окрему систему аутентифікації через MQTT credentials з SHA256-хешуванням паролів, що зберігаються в базі даних та перевіряються брокером при підключенні. Адміністративна панель включає моніторинг стану всіх пристроїв користувача, управління налаштуваннями сповіщень, перегляд журналів подій та email-логів. Для забезпечення відмовостійкості впроваджено систему логування всіх критичних операцій та обробку помилок на рівні глобальних exception filters.
+
+
+2.2. Моделювання поведінки системи
+Для детального проєктування бізнес-логіки серверної частини та алгоритмів керування IoT-пристроями було виконано поведінкове моделювання системи з використанням мови UML. Розроблена діаграма діяльності алгоритму автоматичного годування (див. рис. 2.1) візуалізує логіку роботи фонового планувальника (Cron). Схема демонструє послідовність перевірок активних розкладів, статусу підключення пристрою та рівня корму, визначаючи сценарій дій системи: від публікації команди в MQTT до фіксації події в базі даних та обробки виняткових ситуацій. 
+
+
+  
+
+Рисунок 2.1 – UML-діаграма діяльності для життєвого циклу автоматичного годування
+Деталізацію взаємодії об’єктів під час виконання команд користувача наведено на діаграмі послідовності. Діаграма процесу ручного годування (див. рис. 2.2) відображає хронологію обміну повідомленнями між клієнтом, сервісами бекенду, MQTT-брокером та фізичним пристроєм. На схемі розкрито технічну реалізацію потоку даних, що охоплює автентифікацію запиту, валідацію прав доступу, асинхронну відправку керуючих команд та обробку зворотного зв’язку від пристрою про успішну видачу корму.
+  
+
+Рисунок 2.2 – UML-діаграма діяльності для обробки телеметрії 
+2.3. Програмна реалізація бізнес-логіки
+Основна бізнес-логіка системи, що відповідає за обмін даними з IoT-пристроями та обробку вхідної телеметрії, інкапсульована у класі MqttService. Цей сервіс реалізує асинхронний механізм взаємодії через протокол MQTT, забезпечуючи підписку на канали станів та подій. Ключовим методом є handleMessage, який виконує маршрутизацію повідомлень на основі ієрархічної структури топіка (status, event, error) та десеріалізацію JSON-пакетів. 
+Алгоритм обробки даних розмежовує оновлення поточного стану та фіксацію історичних подій. При отриманні статусних повідомлень (handleDeviceStatus) система актуалізує інформацію про онлайн-присутність та рівень корму безпосередньо в сутності пристрою. У випадку подій годування (handleFeedingEvent) застосовується логіка валідації: система перевіряє коректність ідентифікатора розкладу (UUID) та класифікує тип операції (автоматична або ручна), зберігаючи детальний запис у таблицю FeedingEventEntity. Така архітектура дозволяє підтримувати актуальний стан пристроїв у реальному часі, одночасно формуючи надійний журнал подій для подальшого аналізу.
+
+
+@Injectable()
+export class MqttService implements OnModuleInit, OnModuleDestroy {
+ private client: mqtt.MqttClient | null = null;
+ private readonly logger = new Logger(MqttService.name);
+ private readonly topicPrefix = 'feedlypet';
+
+
+ constructor(
+   private configService: ConfigService,
+   @InjectRepository(DeviceEntity)
+   private devicesRepository: Repository<DeviceEntity>,
+   @InjectRepository(FeedingEventEntity)
+   private feedingEventsRepository: Repository<FeedingEventEntity>,
+   @InjectRepository(FoodLevelEntity)
+   private foodLevelsRepository: Repository<FoodLevelEntity>,
+   @InjectRepository(ScheduleEntity)
+   private schedulesRepository: Repository<ScheduleEntity>,
+ ) {}
+
+
+ async onModuleInit() {
+   const mqttUrl = this.configService.get<string>('MQTT_BROKER_URL');
+
+
+   if (!mqttUrl) {
+     this.logger.warn('MQTT_BROKER_URL not configured, MQTT service disabled');
+     return;
+   }
+
+
+   try {
+     this.client = mqtt.connect(mqttUrl, {
+       clientId: `feedlypet-backend-${Date.now()}`,
+       username: this.configService.get<string>('MQTT_USERNAME'),
+       password: this.configService.get<string>('MQTT_PASSWORD'),
+       reconnectPeriod: 5000,
+       connectTimeout: 30000,
+     });
+
+
+     this.setupEventHandlers();
+   } catch (error) {
+     this.logger.error('Failed to initialize MQTT client', error);
+   }
+ }
+
+
+ async onModuleDestroy() {
+   if (this.client) {
+     await this.client.endAsync();
+     this.logger.log('MQTT client disconnected');
+   }
+ }
+
+
+ private setupEventHandlers() {
+   if (!this.client) return;
+
+
+   this.client.on('connect', () => {
+     this.logger.log('Connected to MQTT broker');
+     this.subscribeToTopics();
+   });
+
+
+   this.client.on('error', (error) => {
+     this.logger.error('MQTT error', error);
+   });
+
+
+   this.client.on('reconnect', () => {
+     this.logger.log('Reconnecting to MQTT broker...');
+   });
+
+
+   this.client.on('message', async (topic, message) => {
+     try {
+       await this.handleMessage(topic, message.toString());
+     } catch (error) {
+       this.logger.error(`Error processing message on topic ${topic}`, error);
+     }
+   });
+ }
+
+
+ private subscribeToTopics() {
+   if (!this.client) return;
+
+
+   const topics = [
+     `${this.topicPrefix}/+/status/online`,
+     `${this.topicPrefix}/+/status/food`,
+     `${this.topicPrefix}/+/event/feeding`,
+     `${this.topicPrefix}/+/error`,
+   ];
+
+
+   topics.forEach((topic) => {
+     this.client!.subscribe(topic, { qos: 1 }, (error) => {
+       if (error) {
+         this.logger.error(`Failed to subscribe to ${topic}`, error);
+       } else {
+         this.logger.log(`Subscribed to ${topic}`);
+       }
+     });
+   });
+ }
+
+
+ private async handleMessage(topic: string, message: string) {
+   const parts = topic.split('/');
+   if (parts.length < 3 || parts[0] !== this.topicPrefix) {
+     return;
+   }
+
+
+   const deviceId = parts[1];
+   const category = parts[2];
+   const action = parts[3];
+
+
+   let payload: any;
+   try {
+     payload = JSON.parse(message);
+   } catch {
+     this.logger.warn(`Invalid JSON message on topic ${topic}`);
+     return;
+   }
+
+
+   if (category === 'status' && action === 'online') {
+     await this.handleDeviceStatus(deviceId, payload);
+   } else if (category === 'status' && action === 'food') {
+     await this.handleFoodLevel(deviceId, payload);
+   } else if (category === 'event' && action === 'feeding') {
+     await this.handleFeedingEvent(deviceId, payload);
+   } else if (category === 'error') {
+     await this.handleDeviceError(deviceId, payload);
+   }
+ }
+
+
+ private async handleDeviceStatus(hardwareId: string, payload: DeviceStatusPayload) {
+   const device = await this.devicesRepository.findOne({
+     where: { deviceId: hardwareId },
+   });
+
+
+   if (!device) {
+     this.logger.warn(`Unknown device: ${hardwareId}`);
+     return;
+   }
+
+
+   device.isOnline = payload.online;
+   device.lastSeen = new Date();
+   await this.devicesRepository.save(device);
+
+
+   this.logger.log(`Device ${hardwareId} status updated: ${payload.online ? 'online' : 'offline'}`);
+
+
+   if (payload.foodLevel !== undefined) {
+     await this.saveFoodLevel(device.id, payload.foodLevel);
+   }
+ }
+
+
+ private async handleFoodLevel(hardwareId: string, payload: FoodLevelPayload) {
+   const device = await this.devicesRepository.findOne({
+     where: { deviceId: hardwareId },
+   });
+
+
+   if (!device) {
+     this.logger.warn(`Unknown device: ${hardwareId}`);
+     return;
+   }
+
+
+   await this.saveFoodLevel(device.id, payload.level);
+ }
+
+
+ private async saveFoodLevel(deviceId: string, level: number) {
+   const foodLevel = this.foodLevelsRepository.create({
+     deviceId,
+     level,
+     timestamp: new Date(),
+   });
+
+
+   await this.foodLevelsRepository.save(foodLevel);
+   this.logger.log(`Food level recorded for device ${deviceId}: ${level}%`);
+ }
+
+
+ private async handleFeedingEvent(hardwareId: string, payload: FeedingEventPayload) {
+   const device = await this.devicesRepository.findOne({
+     where: { deviceId: hardwareId },
+   });
+
+
+   if (!device) {
+     this.logger.warn(`Unknown device: ${hardwareId}`);
+     return;
+   }
+
+
+   let scheduleId: string | null = null;
+   if (payload.scheduleId) {
+     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+     if (uuidRegex.test(payload.scheduleId)) {
+       const schedule = await this.schedulesRepository.findOne({
+         where: { id: payload.scheduleId },
+       });
+
+
+       if (schedule) {
+         scheduleId = payload.scheduleId;
+       } else {
+         this.logger.warn(`Schedule not found for device ${hardwareId}: ${payload.scheduleId}`);
+       }
+     } else {
+       this.logger.warn(`Invalid scheduleId format from device ${hardwareId}: ${payload.scheduleId}`);
+     }
+   }
+
+
+   const feedingEvent = this.feedingEventsRepository.create({
+     deviceId: device.id,
+     petId: device.petId,
+     scheduleId,
+     portionSize: payload.portionSize,
+     type: payload.type === 'automatic' ? FeedingType.AUTOMATIC : FeedingType.MANUAL,
+     success: payload.success,
+     errorMessage: payload.errorMessage || null,
+     timestamp: new Date(payload.timestamp),
+   });
+
+
+   await this.feedingEventsRepository.save(feedingEvent);
+   this.logger.log(`Feeding event recorded for device ${hardwareId}: ${payload.portionSize}g`);
+ }
+
+
+ private async handleDeviceError(hardwareId: string, payload: DeviceErrorPayload) {
+   this.logger.error(
+     `Device error from ${hardwareId}: [${payload.errorCode}] ${payload.errorMessage}`,
+   );
+ }
+
+
+ async sendFeedCommand(hardwareId: string, portionSize: number, scheduleId?: string): Promise<boolean> {
+   if (!this.client || !this.client.connected) {
+     this.logger.warn('MQTT client not connected');
+     return false;
+   }
+
+
+   const topic = `${this.topicPrefix}/${hardwareId}/command/feed`;
+   const payload: FeedCommandPayload = {
+     type: 'feed',
+     portionSize,
+     timestamp: new Date().toISOString(),
+     scheduleId,
+   };
+
+
+   return new Promise((resolve) => {
+     this.client!.publish(topic, JSON.stringify(payload), { qos: 1 }, (error) => {
+       if (error) {
+         this.logger.error(`Failed to send feed command to ${hardwareId}`, error);
+         resolve(false);
+       } else {
+         this.logger.log(`Feed command sent to ${hardwareId}: ${portionSize}g`);
+         resolve(true);
+       }
+     });
+   });
+ }
+
+
+ isConnected(): boolean {
+   return this.client?.connected ?? false;
+ }
+}
+
+
+2.4. Програмна реалізація адміністрування серверної частини
+Функції захисту даних та розмежування доступу на рівні конкретних ресурсів реалізовано через спеціалізований клас OwnershipService. Цей компонент забезпечує динамічну верифікацію прав власності, гарантуючи, що користувач може взаємодіяти виключно з тими об'єктами (тваринами, пристроями, розкладами), які належать безпосередньо йому.
+Сервіс використовує універсальні параметризовані методи (Generics) для роботи з різними репозиторіями TypeORM. Логіка перевірки поділяється на пряму (verifyDirectOwnership), де звіряється ID власника ресурсу, та вкладену (verifyDeviceResourceOwnership), що аналізує ланцюжки зв'язків (наприклад, перевірка приналежності розкладу до пристрою, а пристрою — до користувача). У разі виявлення спроби доступу до чужого обладнання або відсутності запису в базі даних, сервіс генерує відповідні винятки (ForbiddenException або NotFoundException), забезпечуючи таким чином надійну ізоляцію даних користувачів.
+
+
+@Injectable()
+export class OwnershipService {
+
+
+ async verifyDeviceResourceOwnership<T extends { device?: { userId: string } }>(
+   repository: Repository<T>,
+   resourceId: string,
+   userId: string,
+   resourceName: string,
+   notFoundMessage: string,
+   forbiddenMessage: string,
+ ): Promise<T> {
+   const resource = await repository.findOne({
+     where: { id: resourceId } as any,
+     relations: ['device'],
+   });
+
+
+   if (!resource) {
+     throw new NotFoundException(notFoundMessage);
+   }
+
+
+   if (resource.device?.userId !== userId) {
+     throw new ForbiddenException(forbiddenMessage);
+   }
+
+
+   return resource;
+ }
+
+
+ async verifyDirectOwnership<T extends { userId: string }>(
+   repository: Repository<T>,
+   resourceId: string,
+   userId: string,
+   notFoundMessage: string,
+   forbiddenMessage: string,
+ ): Promise<T> {
+   const resource = await repository.findOne({
+     where: { id: resourceId } as any,
+   });
+
+
+   if (!resource) {
+     throw new NotFoundException(notFoundMessage);
+   }
+
+
+   if (resource.userId !== userId) {
+     throw new ForbiddenException(forbiddenMessage);
+   }
+
+
+   return resource;
+ }
+
+
+ async verifyDeviceOwnership<T extends { userId: string }>(
+   devicesRepository: Repository<T>,
+   deviceId: string,
+   userId: string,
+ ): Promise<T> {
+   const device = await devicesRepository.findOne({
+     where: { id: deviceId, userId } as any,
+   });
+
+
+   if (!device) {
+     throw new NotFoundException(ERROR_MESSAGES.DEVICE.NOT_OWNED);
+   }
+
+
+   return device;
+ }
+
+
+ async verifyPetOwnership<T extends { userId: string }>(
+   petsRepository: Repository<T>,
+   petId: string,
+   userId: string,
+ ): Promise<T> {
+   const pet = await petsRepository.findOne({
+     where: { id: petId, userId } as any,
+   });
+
+
+   if (!pet) {
+     throw new NotFoundException(ERROR_MESSAGES.PET.NOT_OWNED);
+   }
+
+
+   return pet;
+ }
+}
+
+
+________________
+
+
+ВИСНОВКИ
+У ході виконання лабораторної роботи було успішно спроєктовано та реалізовано розширену бізнес-логіку серверної частини IoT-системи, функціональність якої значно перевищує базові CRUD-операції. Основний акцент зроблено на розробці алгоритмів двосторонньої взаємодії з фізичними пристроями через протокол MQTT, включаючи обробку асинхронних подій годування та моніторинг стану обладнання в реальному часі. Це дозволило реалізувати складні сценарії автоматизації, такі як виконання розкладів фоновими процесами та умовну обробку команд залежно від онлайн-статусу годівниць.
+Окрему увагу приділено питанням безпеки та розмежування доступу. Імплементовано механізм динамічної верифікації прав власності, який забезпечує сувору ізоляцію ресурсів та унеможливлює маніпуляції з чужими пристроями чи тваринами. Створена архітектура гарантує надійність обміну даними та захищеність системи від несанкціонованого втручання.
+Репозиторій на GitHub: https://github.com/FeedlyPet/backend
