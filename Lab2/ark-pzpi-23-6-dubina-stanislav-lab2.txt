@@ -1,0 +1,634 @@
+﻿МІНІСТЕРСТВО ОСВІТИ І НАУКИ УКРАЇНИ
+ХАРКІВСЬКИЙ НАЦІОНАЛЬНИЙ УНІВЕРСИТЕТ РАДІОЕЛЕКТРОНІКИ
+
+
+ФАКУЛЬТЕТ КОМП’ЮТЕРНИХ НАУК
+КАТЕДРА ПРОГРАМНОЇ ІНЖЕНЕРІЇ
+
+
+
+
+
+
+
+
+ЗВІТ
+до лабораторної роботи №2 з дисципліни
+«Аналіз та рефакторинґ коду»
+на тему: «РОЗРОБКА БАЗИ ДАНИХ ДЛЯ СЕРВЕРНОЇ ЧАСТИНИ ПРОГРАМНОЇ СИСТЕМИ ТА ПРИКЛАДНОГО ПРОГРАМНОГО ІНТЕРФЕЙСУ (API)»
+
+
+
+
+
+
+
+
+Виконав:                                                                                                  Перевірив:
+ст. гр. ПЗПІ-23-6                                                                      ас. катедри ПІ
+Дубіна Станіслав Геннадійович                        Дашенков Дмитро Сергійович
+
+
+
+
+Харків 2025
+
+
+
+
+1 ЗАВДАННЯ
+
+
+Під час виконання лабораторної роботи потрібно розробити серверну частину програмної системи, приділивши основну увагу проектуванню бази даних та API. Робота розпочинається зі створення архітектури, що передбачає підготовку UML-діаграми прецедентів для бекенду, побудову ER-діаграми та формування схеми бази даних. Спираючись на ці моделі, необхідно розгорнути фізичну базу даних і налаштувати програмну взаємодію з нею, застосовуючи технології ORM або CoRM. 
+Завершальним етапом є реалізація механізму обміну даними між сервером і клієнтом через API (REST, GraphQL або gRPC) та написання детальної специфікації розробленого інтерфейсу.
+
+
+________________
+
+
+2 ОПИС ВИКОНАНОЇ РОБОТИ
+2.1. Опис інженерних рішень та архітектури системи
+Серверна архітектура системи базується на принципах REST API, що дозволяє чітко розмежувати клієнтську та серверну логіку. Такий підхід забезпечує використання єдиного бекенду для обслуговування як веб-інтерфейсу диспетчера, так і мобільного застосунку водіїв, здійснюючи обмін даними у форматі JSON через стандартні HTTP-методи.
+Основним інструментом розробки обрано фреймворк NestJS на платформі Node.js. Його перевагами є модульна структура та використання патерну Dependency Injection, що спрощує тестування та підтримку коду. Застосування мови TypeScript із суворою типізацією допомагає уникати помилок ще на етапі написання, а вбудовані механізми валідації підвищують надійність API.
+Як сховище даних використовується реляційна СКБД PostgreSQL, що гарантує цілісність даних (ACID) та ефективну роботу зі складними зв’язками між сутностями. Взаємодія з базою даних здійснюється через TypeORM. Цей інструмент дозволяє оперувати даними як об'єктами, автоматизує керування схемою БД через міграції та забезпечує захист від SQL-ін'єкцій.
+2.2. Проєктування бази даних та структури системи
+Для формалізації функціональних вимог розроблено UML-діаграму прецедентів (див. рис. 2.1), яка визначає ролі акторів (Owner, Dispatcher, Driver) та логіку їхньої взаємодії з системою. 
+  
+
+Рисунок 2.1 – UML-діаграма прецедентів
+
+
+Інформаційну модель проєкту представлено на ER-діаграмі (рис. 2.2), що описує зв’язки між ключовими сутностями.
+  
+
+Рисунок 2.2 – ER-діаграма
+
+
+ На основі логічної моделі реалізовано фізичну структуру бази даних. Детальна схема таблиць із зазначенням типів даних та обмежень цілісності (PK, FK) наведена на рис. 2.3.
+  
+
+Рисунок 2.3 – Схема БД
+
+
+2.3. Специфікація прикладного програмного інтерфейсу (API)
+2.3.1 Автентифікація 
+* POST /api/auth/register (Register new user)
+* POST /api/auth/login (Login user)
+* POST /api/auth/logout (Logout user and revoke refresh token)
+* POST /api/auth/refresh (Refresh access token)
+* POST /api/auth/forgot-password (Request password reset email)
+* POST /api/auth/reset-password (Reset password with token)
+* POST /api/auth/verify-email (Verify email address with token)
+* POST /api/auth/resend-verification (Resend email verification)
+2.3.2 Профілі користувачів
+* GET /api/users/profile (Get current user profile)
+* PATCH /api/users/profile (Update user profile)
+* PATCH /api/users/password (Change user password)
+2.3.3 Тварини
+* POST /api/pets (Create new pet)
+* GET /api/pets (Get all user pets with pagination, sorting and search)
+* GET /api/pets/{id} (Get pet by ID)
+* PATCH /api/pets/{id} (Update pet details)
+* DELETE /api/pets/{id}(Delete pet)
+2.3.4 Пристрої 
+* POST /api/devices (Register new device)
+* GET /api/devices (Get all user devices with pagination, sorting and search)
+* GET /api/devices/{id} (Get device by ID)
+* PATCH /api/devices/{id} (Update device details)
+* DELETE /api/devices/{id} (Delete device)
+* POST /api/devices/{id}/regenerate-password (Regenerate MQTT password for device)
+* POST /api/devices/{id}/feed (Trigger manual feeding for a device)
+2.3.5 Розклади 
+* POST /api/devices/{deviceId}/schedules (Create new feeding schedule for a device)
+* GET /api/devices/{deviceId}/schedules (Get all schedules for a device with pagination and filtering)
+* GET /api/schedules/{id} (Get schedule by ID)
+* PATCH /api/schedules/{id} (Update schedule)
+* DELETE /api/schedules/{id} (Delete schedule)
+* PATCH /api/schedules/{id}/toggle (Toggle schedule active status)
+2.4. Програмна реалізація серверної частини
+Програмна реалізація системи виконана за модульним принципом на базі фреймворку NestJS. Кожна предметна область (авторизація, профілі користувачів, тварини, пристрої, розклади) виділена в окремий модуль, що містить контролери для маршрутизації запитів, сервіси для бізнес-логіки та сутності для відображення таблиць бази даних. Розглянемо реалізацію модуля управління пристроями (Devices), який демонструє повний цикл обробки даних: від отримання HTTP-запиту до збереження інформації у PostgreSQL.
+Контролери у системі виступають вхідною точкою для API. Вони відповідають за маршрутизацію, валідацію вхідних даних за допомогою DTO (Data Transfer Objects) та перевірку прав доступу користувачів.
+Нижче наведено фрагмент коду класу DevicesController. У ньому визначено методи для реєстрації нового пристрою (POST), отримання списку наявних девайсів (GET) та виконання специфічних дій, таких як ініціювання ручного годування. За допомогою декораторів доступ до цих методів дозволено лише авторизованим користувачам, які пройшли верифікацію.
+
+
+@ApiTags('Devices')
+@Controller('devices')
+@UseGuards(JwtAuthGuard)
+@ApiBearerAuth('JWT-auth')
+export class DevicesController {
+ constructor(private readonly devicesService: DevicesService) {}
+
+
+ @Post()
+ @HttpCode(HttpStatus.CREATED)
+ @ApiOperation({ summary: 'Register new device' })
+ @ApiResponse({
+   status: 400,
+   description: 'Bad request - Invalid data or pet not found',
+ })
+ @ApiResponse({
+   status: 401,
+   description: 'Unauthorized',
+ })
+ @ApiResponse({
+   status: 409,
+   description: 'Device with this deviceId already exists',
+ })
+ async create(
+   @CurrentUser() user: any,
+   @Body(ValidationPipe) createDeviceDto: CreateDeviceDto,
+ ): Promise<DeviceWithPasswordResponseDto> {
+   return this.devicesService.create(user.id, createDeviceDto);
+ }
+
+
+ @Get()
+ @ApiOperation({ summary: 'Get all user devices with pagination, sorting and search' })
+ @ApiResponse({
+   status: 401,
+   description: 'Unauthorized',
+ })
+ async findAll(
+   @CurrentUser() user: any,
+   @Query(ValidationPipe) query: QueryDevicesDto,
+ ): Promise<PaginatedResponseDto<DeviceResponseDto>> {
+   return this.devicesService.findAll(user.id, query);
+ }
+
+
+ @Get(':id')
+ @ApiOperation({ summary: 'Get device by ID' })
+ @ApiResponse({
+   status: 401,
+   description: 'Unauthorized',
+ })
+ @ApiResponse({
+   status: 403,
+   description: 'Forbidden - Device does not belong to user',
+ })
+ @ApiResponse({
+   status: 404,
+   description: 'Device not found',
+ })
+ async findOne(
+   @Param('id') id: string,
+   @CurrentUser() user: any,
+ ): Promise<DeviceResponseDto> {
+   return this.devicesService.findOne(id, user.id);
+ }
+
+
+ @Patch(':id')
+ @ApiOperation({ summary: 'Update device details' })
+ @ApiResponse({
+   status: 400,
+   description: 'Bad request - Invalid data or pet not found',
+ })
+ @ApiResponse({
+   status: 401,
+   description: 'Unauthorized',
+ })
+ @ApiResponse({
+   status: 403,
+   description: 'Forbidden - Device does not belong to user',
+ })
+ @ApiResponse({
+   status: 404,
+   description: 'Device not found',
+ })
+ async update(
+   @Param('id') id: string,
+   @CurrentUser() user: any,
+   @Body(ValidationPipe) updateDeviceDto: UpdateDeviceDto,
+ ): Promise<DeviceResponseDto> {
+   return this.devicesService.update(id, user.id, updateDeviceDto);
+ }
+
+
+ @Delete(':id')
+ @HttpCode(HttpStatus.NO_CONTENT)
+ @ApiOperation({ summary: 'Delete device' })
+ @ApiResponse({
+   status: 401,
+   description: 'Unauthorized',
+ })
+ @ApiResponse({
+   status: 403,
+   description: 'Forbidden - Device does not belong to user',
+ })
+ @ApiResponse({
+   status: 404,
+   description: 'Device not found',
+ })
+ async remove(
+   @Param('id') id: string,
+   @CurrentUser() user: any,
+ ): Promise<void> {
+   return this.devicesService.remove(id, user.id);
+ }
+
+
+ @Post(':id/regenerate-password')
+ @HttpCode(HttpStatus.OK)
+ @ApiOperation({ summary: 'Regenerate MQTT password for device' })
+ @ApiResponse({
+   status: 401,
+   description: 'Unauthorized',
+ })
+ @ApiResponse({
+   status: 403,
+   description: 'Forbidden - Device does not belong to user',
+ })
+ @ApiResponse({
+   status: 404,
+   description: 'Device not found',
+ })
+ async regeneratePassword(
+   @Param('id') id: string,
+   @CurrentUser() user: any,
+ ): Promise<DeviceWithPasswordResponseDto> {
+   return this.devicesService.regenerateMqttPassword(id, user.id);
+ }
+
+
+ @Post(':id/feed')
+ @HttpCode(HttpStatus.OK)
+ @ApiOperation({ summary: 'Trigger manual feeding for a device' })
+ @ApiResponse({
+   status: 400,
+   description: 'Bad request - Invalid portion size',
+ })
+ @ApiResponse({
+   status: 401,
+   description: 'Unauthorized',
+ })
+ @ApiResponse({
+   status: 403,
+   description: 'Forbidden - Device does not belong to user',
+ })
+ @ApiResponse({
+   status: 404,
+   description: 'Device not found',
+ })
+ async manualFeed(
+   @Param('id') id: string,
+   @CurrentUser() user: any,
+   @Body(ValidationPipe) manualFeedDto: ManualFeedDto,
+ ): Promise<ManualFeedResponseDto> {
+   return this.devicesService.manualFeed(id, user.id, manualFeedDto);
+ }
+}
+
+
+Безпосередня робота з даними зосереджена у сервісному шарі, що дозволяє чітко відокремити бізнес-логіку (наприклад, перевірку прав власності на пристрій або розрахунок часу годування) від обробки HTTP-запитів. Сервіси реалізують операції з базою даних, використовуючи патерн Repository та можливості ORM TypeORM для виконання запитів.
+
+
+@Injectable()
+export class DevicesService {
+ constructor(
+   @InjectRepository(DeviceEntity)
+   private devicesRepository: Repository<DeviceEntity>,
+   @InjectRepository(PetEntity)
+   private petsRepository: Repository<PetEntity>,
+   @InjectRepository(FeedingEventEntity)
+   private feedingEventsRepository: Repository<FeedingEventEntity>,
+   private ownershipService: OwnershipService,
+   private mqttService: MqttService,
+ ) {}
+
+
+ async create(
+   userId: string,
+   createDeviceDto: CreateDeviceDto,
+ ): Promise<DeviceWithPasswordResponseDto> {
+   const existingDevice = await this.devicesRepository.findOne({
+     where: { deviceId: createDeviceDto.deviceId },
+   });
+
+
+   if (existingDevice) {
+     throw new ConflictException('Device with this deviceId already exists');
+   }
+
+
+   if (createDeviceDto.petId) {
+     await this.ownershipService.verifyPetOwnership(
+       this.petsRepository,
+       createDeviceDto.petId,
+       userId,
+     );
+   }
+
+
+   const { plainPassword, hashedPassword } = MqttPasswordUtil.generateAndHash();
+
+
+   const device = this.devicesRepository.create({
+     ...createDeviceDto,
+     userId,
+     isOnline: false,
+     lastSeen: null,
+     mqttPasswordHash: hashedPassword,
+   });
+
+
+   const savedDevice = await this.devicesRepository.save(device);
+   return {
+     ...this.mapToResponseDto(savedDevice),
+     mqttPassword: plainPassword,
+   };
+ }
+
+
+ async findAll(
+   userId: string,
+   query: QueryDevicesDto,
+ ): Promise<PaginatedResponseDto<DeviceResponseDto>> {
+   const { page = 1, limit = 10, search } = query;
+
+
+   const queryBuilder = this.devicesRepository
+     .createQueryBuilder('device')
+     .where('device.userId = :userId', { userId });
+
+
+   if (search) {
+     queryBuilder.andWhere(
+       '(device.name ILIKE :search OR device.deviceId ILIKE :search OR device.location ILIKE :search)',
+       { search: `%${search}%` },
+     );
+   }
+
+
+   PaginationHelper.applyPagination(queryBuilder, query, 'device', 'createdAt');
+
+
+   return PaginationHelper.buildPaginatedResponse(
+     queryBuilder,
+     page,
+     limit,
+     (device) => this.mapToResponseDto(device),
+   );
+ }
+
+
+ async findOne(id: string, userId: string): Promise<DeviceResponseDto> {
+   const device = await this.ownershipService.verifyDirectOwnership(
+     this.devicesRepository,
+     id,
+     userId,
+     ERROR_MESSAGES.DEVICE.NOT_FOUND,
+     ERROR_MESSAGES.DEVICE.NOT_OWNED,
+   );
+
+
+   return this.mapToResponseDto(device);
+ }
+
+
+ async update(
+   id: string,
+   userId: string,
+   updateDeviceDto: UpdateDeviceDto,
+ ): Promise<DeviceResponseDto> {
+   const device = await this.ownershipService.verifyDirectOwnership(
+     this.devicesRepository,
+     id,
+     userId,
+     ERROR_MESSAGES.DEVICE.NOT_FOUND,
+     ERROR_MESSAGES.DEVICE.NOT_OWNED,
+   );
+
+
+   if (updateDeviceDto.petId !== undefined) {
+     if (updateDeviceDto.petId === null) {
+       device.petId = null;
+     } else {
+       await this.ownershipService.verifyPetOwnership(
+         this.petsRepository,
+         updateDeviceDto.petId,
+         userId,
+       );
+       device.petId = updateDeviceDto.petId;
+     }
+   }
+
+
+   if (updateDeviceDto.name !== undefined) {
+     device.name = updateDeviceDto.name;
+   }
+   if (updateDeviceDto.location !== undefined) {
+     device.location = updateDeviceDto.location;
+   }
+
+
+   const updatedDevice = await this.devicesRepository.save(device);
+   return this.mapToResponseDto(updatedDevice);
+ }
+
+
+ async remove(id: string, userId: string): Promise<void> {
+   const device = await this.ownershipService.verifyDirectOwnership(
+     this.devicesRepository,
+     id,
+     userId,
+     ERROR_MESSAGES.DEVICE.NOT_FOUND,
+     ERROR_MESSAGES.DEVICE.NOT_OWNED,
+   );
+
+
+   await this.devicesRepository.remove(device);
+ }
+
+
+ async regenerateMqttPassword(
+   id: string,
+   userId: string,
+ ): Promise<DeviceWithPasswordResponseDto> {
+   const device = await this.ownershipService.verifyDirectOwnership(
+     this.devicesRepository,
+     id,
+     userId,
+     ERROR_MESSAGES.DEVICE.NOT_FOUND,
+     ERROR_MESSAGES.DEVICE.NOT_OWNED,
+   );
+
+
+   const { plainPassword, hashedPassword } = MqttPasswordUtil.generateAndHash();
+
+
+   device.mqttPasswordHash = hashedPassword;
+   const updatedDevice = await this.devicesRepository.save(device);
+
+
+   return {
+     ...this.mapToResponseDto(updatedDevice),
+     mqttPassword: plainPassword,
+   };
+ }
+
+
+ async manualFeed(
+   id: string,
+   userId: string,
+   manualFeedDto: ManualFeedDto,
+ ): Promise<ManualFeedResponseDto> {
+   const device = await this.ownershipService.verifyDirectOwnership(
+     this.devicesRepository,
+     id,
+     userId,
+     ERROR_MESSAGES.DEVICE.NOT_FOUND,
+     ERROR_MESSAGES.DEVICE.NOT_OWNED,
+   );
+
+
+   let commandSent = false;
+   if (this.mqttService.isConnected()) {
+     commandSent = await this.mqttService.sendFeedCommand(
+       device.deviceId,
+       manualFeedDto.portionSize,
+     );
+   }
+
+
+   const feedingEvent = this.feedingEventsRepository.create({
+     deviceId: device.id,
+     petId: device.petId,
+     portionSize: manualFeedDto.portionSize,
+     type: FeedingType.MANUAL,
+     success: true,
+     timestamp: new Date(),
+   });
+
+
+   await this.feedingEventsRepository.save(feedingEvent);
+
+
+   return {
+     success: true,
+     message: commandSent
+       ? 'Manual feeding command sent successfully'
+       : 'Feeding event recorded (MQTT not connected)',
+     commandSent,
+   };
+ }
+
+
+ private mapToResponseDto(device: DeviceEntity): DeviceResponseDto {
+   return {
+     id: device.id,
+     userId: device.userId,
+     petId: device.petId,
+     deviceId: device.deviceId,
+     name: device.name,
+     location: device.location,
+     isOnline: device.isOnline,
+     lastSeen: device.lastSeen,
+     createdAt: device.createdAt,
+     updatedAt: device.updatedAt,
+   };
+ }
+}
+
+
+Структура таблиць бази даних у проєкті описується за допомогою класів-сутностей (Entities). Використання декораторів TypeORM дозволяє декларативно визначити типи стовпців, обмеження (constraints) та зв’язки між таблицями безпосередньо у коді, що забезпечує відповідність фізичної БД об’єктній моделі програми. 
+Нижче наведено код сутності Device.
+
+
+@Entity('devices')
+export class DeviceEntity {
+   @PrimaryGeneratedColumn('uuid')
+   id: string;
+
+
+   @Column({ type: 'uuid', name: 'user_id' })
+   userId: string;
+
+
+   @Column({ type: 'uuid', name: 'pet_id', nullable: true })
+   petId: string | null;
+
+
+   @Column({ type: 'varchar', length: 100, unique: true, name: 'device_id' })
+   deviceId: string;
+
+
+   @Column({ type: 'varchar', length: 100 })
+   name: string;
+
+
+   @Column({ type: 'varchar', length: 200, nullable: true })
+   location: string | null;
+
+
+   @Column({ type: 'boolean', default: false, name: 'is_online' })
+   isOnline: boolean;
+
+
+   @Column({ type: 'timestamp with time zone', nullable: true, name: 'last_seen' })
+   lastSeen: Date | null;
+
+
+   @Column({ type: 'varchar', length: 255, name: 'mqtt_password_hash' })
+   mqttPasswordHash: string;
+
+
+   @CreateDateColumn({ type: 'timestamp with time zone', name: 'created_at' })
+   createdAt: Date;
+
+
+   @UpdateDateColumn({ type: 'timestamp with time zone', name: 'updated_at' })
+   updatedAt: Date;
+
+
+   @ManyToOne(() => UserEntity, (user) => user.devices, { onDelete: 'CASCADE' })
+   @JoinColumn({ name: 'user_id' })
+   user: UserEntity;
+
+
+   @ManyToOne(() => PetEntity, (pet) => pet.devices, { onDelete: 'SET NULL', nullable: true })
+   @JoinColumn({ name: 'pet_id' })
+   pet: PetEntity | null;
+
+
+   @OneToMany(() => ScheduleEntity, (schedule) => schedule.device)
+   schedules: ScheduleEntity[];
+
+
+   @OneToMany(() => FeedingEventEntity, (event) => event.device)
+   feedingEvents: FeedingEventEntity[];
+
+
+   @OneToMany(() => FoodLevelEntity, (foodLevel) => foodLevel.device)
+   foodLevels: FoodLevelEntity[];
+
+
+   @OneToMany(() => NotificationEntity, (notification) => notification.device)
+   notifications: NotificationEntity[];
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+________________
+
+
+ВИСНОВКИ
+У ході лабораторної роботи було спроєктовано реляційну базу даних для системи автоматизованого догляду за тваринами. Розроблено REST API, що забезпечує виконання CRUD-операцій над ключовими сутностями (тварини, пристрої, розклади годування), та реалізовано надійну взаємодію серверної частини з СУБД PostgreSQL за допомогою технології ORM.
+Репозиторій на GitHub: https://github.com/FeedlyPet/backend
